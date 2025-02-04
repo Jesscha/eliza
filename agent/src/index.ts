@@ -11,9 +11,8 @@ import { SlackClientInterface } from "@elizaos/client-slack";
 import { TelegramClientInterface } from "@elizaos/client-telegram";
 import { TwitterClientInterface } from "@elizaos/client-twitter";
 // import { ReclaimAdapter } from "@elizaos/plugin-reclaim";
-import { DirectClient } from "@elizaos/client-direct";
 import { PrimusAdapter } from "@elizaos/plugin-primus";
-
+import { twitterPlugin } from "@elizaos/plugin-twitter";
 import {
     AgentRuntime,
     CacheManager,
@@ -96,13 +95,13 @@ import { openWeatherPlugin } from "@elizaos/plugin-open-weather";
 import { stargazePlugin } from "@elizaos/plugin-stargaze";
 import { akashPlugin } from "@elizaos/plugin-akash";
 import { quaiPlugin } from "@elizaos/plugin-quai";
+import { nadiPlugin } from "@elizaos/plugin-nadi";
 import Database from "better-sqlite3";
 import fs from "fs";
 import net from "net";
 import path from "path";
 import { fileURLToPath } from "url";
 import yargs from "yargs";
-import {dominosPlugin} from "@elizaos/plugin-dominos";
 
 const __filename = fileURLToPath(import.meta.url); // get the resolved path to the file
 const __dirname = path.dirname(__filename); // get the name of the directory
@@ -152,14 +151,29 @@ function tryLoadFile(filePath: string): string | null {
 function mergeCharacters(base: Character, child: Character): Character {
     const mergeObjects = (baseObj: any, childObj: any) => {
         const result: any = {};
-        const keys = new Set([...Object.keys(baseObj || {}), ...Object.keys(childObj || {})]);
-        keys.forEach(key => {
-            if (typeof baseObj[key] === 'object' && typeof childObj[key] === 'object' && !Array.isArray(baseObj[key]) && !Array.isArray(childObj[key])) {
+        const keys = new Set([
+            ...Object.keys(baseObj || {}),
+            ...Object.keys(childObj || {}),
+        ]);
+        keys.forEach((key) => {
+            if (
+                typeof baseObj[key] === "object" &&
+                typeof childObj[key] === "object" &&
+                !Array.isArray(baseObj[key]) &&
+                !Array.isArray(childObj[key])
+            ) {
                 result[key] = mergeObjects(baseObj[key], childObj[key]);
-            } else if (Array.isArray(baseObj[key]) || Array.isArray(childObj[key])) {
-                result[key] = [...(baseObj[key] || []), ...(childObj[key] || [])];
+            } else if (
+                Array.isArray(baseObj[key]) ||
+                Array.isArray(childObj[key])
+            ) {
+                result[key] = [
+                    ...(baseObj[key] || []),
+                    ...(childObj[key] || []),
+                ];
             } else {
-                result[key] = childObj[key] !== undefined ? childObj[key] : baseObj[key];
+                result[key] =
+                    childObj[key] !== undefined ? childObj[key] : baseObj[key];
             }
         });
         return result;
@@ -174,32 +188,36 @@ async function loadCharacter(filePath: string): Promise<Character> {
     let character = JSON.parse(content);
     validateCharacterConfig(character);
 
-     // .id isn't really valid
-     const characterId = character.id || character.name;
-     const characterPrefix = `CHARACTER.${characterId.toUpperCase().replace(/ /g, "_")}.`;
-     const characterSettings = Object.entries(process.env)
-         .filter(([key]) => key.startsWith(characterPrefix))
-         .reduce((settings, [key, value]) => {
-             const settingKey = key.slice(characterPrefix.length);
-             return { ...settings, [settingKey]: value };
-         }, {});
-     if (Object.keys(characterSettings).length > 0) {
-         character.settings = character.settings || {};
-         character.settings.secrets = {
-             ...characterSettings,
-             ...character.settings.secrets,
-         };
-     }
-     // Handle plugins
-     character.plugins = await handlePluginImporting(
-        character.plugins
-    );
+    // .id isn't really valid
+    const characterId = character.id || character.name;
+    const characterPrefix = `CHARACTER.${characterId.toUpperCase().replace(/ /g, "_")}.`;
+    const characterSettings = Object.entries(process.env)
+        .filter(([key]) => key.startsWith(characterPrefix))
+        .reduce((settings, [key, value]) => {
+            const settingKey = key.slice(characterPrefix.length);
+            return { ...settings, [settingKey]: value };
+        }, {});
+    if (Object.keys(characterSettings).length > 0) {
+        character.settings = character.settings || {};
+        character.settings.secrets = {
+            ...characterSettings,
+            ...character.settings.secrets,
+        };
+    }
+    // Handle plugins
+    character.plugins = await handlePluginImporting(character.plugins);
     if (character.extends) {
-        elizaLogger.info(`Merging  ${character.name} character with parent characters`);
+        elizaLogger.info(
+            `Merging  ${character.name} character with parent characters`
+        );
         for (const extendPath of character.extends) {
-            const baseCharacter = await loadCharacter(path.resolve(path.dirname(filePath), extendPath));
+            const baseCharacter = await loadCharacter(
+                path.resolve(path.dirname(filePath), extendPath)
+            );
             character = mergeCharacters(baseCharacter, character);
-            elizaLogger.info(`Merged ${character.name} with ${baseCharacter.name}`);
+            elizaLogger.info(
+                `Merged ${character.name} with ${baseCharacter.name}`
+            );
         }
     }
     return character;
@@ -472,7 +490,9 @@ function initializeDatabase(dataDir: string) {
         // Test the connection
         db.init()
             .then(() => {
-                elizaLogger.success("Successfully connected to Supabase database");
+                elizaLogger.success(
+                    "Successfully connected to Supabase database"
+                );
             })
             .catch((error) => {
                 elizaLogger.error("Failed to connect to Supabase:", error);
@@ -489,7 +509,9 @@ function initializeDatabase(dataDir: string) {
         // Test the connection
         db.init()
             .then(() => {
-                elizaLogger.success("Successfully connected to PostgreSQL database");
+                elizaLogger.success(
+                    "Successfully connected to PostgreSQL database"
+                );
             })
             .catch((error) => {
                 elizaLogger.error("Failed to connect to PostgreSQL:", error);
@@ -504,14 +526,17 @@ function initializeDatabase(dataDir: string) {
         });
         return db;
     } else {
-        const filePath = process.env.SQLITE_FILE ?? path.resolve(dataDir, "db.sqlite");
+        const filePath =
+            process.env.SQLITE_FILE ?? path.resolve(dataDir, "db.sqlite");
         elizaLogger.info(`Initializing SQLite database at ${filePath}...`);
         const db = new SqliteDatabaseAdapter(new Database(filePath));
 
         // Test the connection
         db.init()
             .then(() => {
-                elizaLogger.success("Successfully connected to SQLite database");
+                elizaLogger.success(
+                    "Successfully connected to SQLite database"
+                );
             })
             .catch((error) => {
                 elizaLogger.error("Failed to connect to SQLite:", error);
@@ -689,7 +714,8 @@ export async function createAgent(
     if (
         process.env.PRIMUS_APP_ID &&
         process.env.PRIMUS_APP_SECRET &&
-        process.env.VERIFIABLE_INFERENCE_ENABLED === "true"){
+        process.env.VERIFIABLE_INFERENCE_ENABLED === "true"
+    ) {
         verifiableInferenceAdapter = new PrimusAdapter({
             appId: process.env.PRIMUS_APP_ID,
             appSecret: process.env.PRIMUS_APP_SECRET,
@@ -709,151 +735,151 @@ export async function createAgent(
         // character.plugins are handled when clients are added
         plugins: [
             bootstrapPlugin,
-            getSecret(character, "CONFLUX_CORE_PRIVATE_KEY")
-                ? confluxPlugin
-                : null,
-            nodePlugin,
-            getSecret(character, "TAVILY_API_KEY") ? webSearchPlugin : null,
-            getSecret(character, "SOLANA_PUBLIC_KEY") ||
-            (getSecret(character, "WALLET_PUBLIC_KEY") &&
-                !getSecret(character, "WALLET_PUBLIC_KEY")?.startsWith("0x"))
-                ? solanaPlugin
-                : null,
-            getSecret(character, "SOLANA_PRIVATE_KEY")
-                ? solanaAgentkitPlguin
-                : null,
-            getSecret(character, "AUTONOME_JWT_TOKEN") ? autonomePlugin : null,
-            (getSecret(character, "NEAR_ADDRESS") ||
-                getSecret(character, "NEAR_WALLET_PUBLIC_KEY")) &&
-            getSecret(character, "NEAR_WALLET_SECRET_KEY")
-                ? nearPlugin
-                : null,
-            getSecret(character, "EVM_PUBLIC_KEY") ||
-            (getSecret(character, "WALLET_PUBLIC_KEY") &&
-                getSecret(character, "WALLET_PUBLIC_KEY")?.startsWith("0x"))
-                ? evmPlugin
-                : null,
-            getSecret(character, "COSMOS_RECOVERY_PHRASE") &&
-                getSecret(character, "COSMOS_AVAILABLE_CHAINS") &&
-                createCosmosPlugin(),
-            (getSecret(character, "SOLANA_PUBLIC_KEY") ||
-                (getSecret(character, "WALLET_PUBLIC_KEY") &&
-                    !getSecret(character, "WALLET_PUBLIC_KEY")?.startsWith(
-                        "0x"
-                    ))) &&
-            getSecret(character, "SOLANA_ADMIN_PUBLIC_KEY") &&
-            getSecret(character, "SOLANA_PRIVATE_KEY") &&
-            getSecret(character, "SOLANA_ADMIN_PRIVATE_KEY")
-                ? nftGenerationPlugin
-                : null,
-            getSecret(character, "ZEROG_PRIVATE_KEY") ? zgPlugin : null,
-            getSecret(character, "COINMARKETCAP_API_KEY")
-                ? coinmarketcapPlugin
-                : null,
-            getSecret(character, "COINBASE_COMMERCE_KEY")
-                ? coinbaseCommercePlugin
-                : null,
-            getSecret(character, "FAL_API_KEY") ||
-            getSecret(character, "OPENAI_API_KEY") ||
-            getSecret(character, "VENICE_API_KEY") ||
-            getSecret(character, "NINETEEN_AI_API_KEY") ||
-            getSecret(character, "HEURIST_API_KEY") ||
-            getSecret(character, "LIVEPEER_GATEWAY_URL")
-                ? imageGenerationPlugin
-                : null,
-            getSecret(character, "FAL_API_KEY") ? ThreeDGenerationPlugin : null,
-            ...(getSecret(character, "COINBASE_API_KEY") &&
-            getSecret(character, "COINBASE_PRIVATE_KEY")
-                ? [
-                      coinbaseMassPaymentsPlugin,
-                      tradePlugin,
-                      tokenContractPlugin,
-                      advancedTradePlugin,
-                  ]
-                : []),
-            ...(teeMode !== TEEMode.OFF && walletSecretSalt ? [teePlugin] : []),
-            getSecret(character, "SGX") ? sgxPlugin : null,
-            getSecret(character, "ENABLE_TEE_LOG") &&
-            ((teeMode !== TEEMode.OFF && walletSecretSalt) ||
-                getSecret(character, "SGX"))
-                ? teeLogPlugin
-                : null,
-            getSecret(character, "COINBASE_API_KEY") &&
-            getSecret(character, "COINBASE_PRIVATE_KEY") &&
-            getSecret(character, "COINBASE_NOTIFICATION_URI")
-                ? webhookPlugin
-                : null,
-            goatPlugin,
-            getSecret(character, "COINGECKO_API_KEY") ||
-            getSecret(character, "COINGECKO_PRO_API_KEY")
-                ? coingeckoPlugin
-                : null,
-            getSecret(character, "EVM_PROVIDER_URL") ? goatPlugin : null,
-            getSecret(character, "ABSTRACT_PRIVATE_KEY")
-                ? abstractPlugin
-                : null,
-            getSecret(character, "BINANCE_API_KEY") &&
-            getSecret(character, "BINANCE_SECRET_KEY")
-                ? binancePlugin
-                : null,
-            getSecret(character, "FLOW_ADDRESS") &&
-            getSecret(character, "FLOW_PRIVATE_KEY")
-                ? flowPlugin
-                : null,
-            getSecret(character, "LENS_ADDRESS") &&
-            getSecret(character, "LENS_PRIVATE_KEY")
-                ? lensPlugin
-                : null,
-            getSecret(character, "APTOS_PRIVATE_KEY") ? aptosPlugin : null,
-            getSecret(character, "MVX_PRIVATE_KEY") ? multiversxPlugin : null,
-            getSecret(character, "ZKSYNC_PRIVATE_KEY") ? zksyncEraPlugin : null,
-            getSecret(character, "CRONOSZKEVM_PRIVATE_KEY")
-                ? cronosZkEVMPlugin
-                : null,
-            getSecret(character, "TEE_MARLIN") ? teeMarlinPlugin : null,
-            getSecret(character, "TON_PRIVATE_KEY") ? tonPlugin : null,
-            getSecret(character, "THIRDWEB_SECRET_KEY") ? thirdwebPlugin : null,
-            getSecret(character, "SUI_PRIVATE_KEY") ? suiPlugin : null,
-            getSecret(character, "STORY_PRIVATE_KEY") ? storyPlugin : null,
-            getSecret(character, "FUEL_PRIVATE_KEY") ? fuelPlugin : null,
-            getSecret(character, "AVALANCHE_PRIVATE_KEY")
-                ? avalanchePlugin
-                : null,
-            getSecret(character, "ECHOCHAMBERS_API_URL") &&
-            getSecret(character, "ECHOCHAMBERS_API_KEY")
-                ? echoChambersPlugin
-                : null,
-            getSecret(character, "LETZAI_API_KEY") ? letzAIPlugin : null,
-            getSecret(character, "STARGAZE_ENDPOINT") ? stargazePlugin : null,
-            getSecret(character, "GIPHY_API_KEY") ? giphyPlugin : null,
-            getSecret(character, "GENLAYER_PRIVATE_KEY")
-                ? genLayerPlugin
-                : null,
-            getSecret(character, "AVAIL_SEED") &&
-            getSecret(character, "AVAIL_APP_ID")
-                ? availPlugin
-                : null,
-            getSecret(character, "OPEN_WEATHER_API_KEY")
-                ? openWeatherPlugin
-                : null,
-            getSecret(character, "OBSIDIAN_API_TOKEN") ? obsidianPlugin : null,
-            getSecret(character, "ARTHERA_PRIVATE_KEY")?.startsWith("0x")
-                ? artheraPlugin
-                : null,
-            getSecret(character, "ALLORA_API_KEY") ? alloraPlugin : null,
-            getSecret(character, "HYPERLIQUID_PRIVATE_KEY")
-                ? hyperliquidPlugin
-                : null,
-            getSecret(character, "HYPERLIQUID_TESTNET")
-                ? hyperliquidPlugin
-                : null,
-            getSecret(character, "AKASH_MNEMONIC") &&
-            getSecret(character, "AKASH_WALLET_ADDRESS")
-                ? akashPlugin
-                : null,
-            getSecret(character, "QUAI_PRIVATE_KEY")
-                ? quaiPlugin
-                : null,
+            twitterPlugin,
+            nadiPlugin,
+            // getSecret(character, "CONFLUX_CORE_PRIVATE_KEY")
+            //     ? confluxPlugin
+            //     : null,
+            // nodePlugin,
+            // getSecret(character, "TAVILY_API_KEY") ? webSearchPlugin : null,
+            // getSecret(character, "SOLANA_PUBLIC_KEY") ||
+            // (getSecret(character, "WALLET_PUBLIC_KEY") &&
+            //     !getSecret(character, "WALLET_PUBLIC_KEY")?.startsWith("0x"))
+            //     ? solanaPlugin
+            //     : null,
+            // getSecret(character, "SOLANA_PRIVATE_KEY")
+            //     ? solanaAgentkitPlguin
+            //     : null,
+            // getSecret(character, "AUTONOME_JWT_TOKEN") ? autonomePlugin : null,
+            // (getSecret(character, "NEAR_ADDRESS") ||
+            //     getSecret(character, "NEAR_WALLET_PUBLIC_KEY")) &&
+            // getSecret(character, "NEAR_WALLET_SECRET_KEY")
+            //     ? nearPlugin
+            //     : null,
+            // getSecret(character, "EVM_PUBLIC_KEY") ||
+            // (getSecret(character, "WALLET_PUBLIC_KEY") &&
+            //     getSecret(character, "WALLET_PUBLIC_KEY")?.startsWith("0x"))
+            //     ? evmPlugin
+            //     : null,
+            // getSecret(character, "COSMOS_RECOVERY_PHRASE") &&
+            //     getSecret(character, "COSMOS_AVAILABLE_CHAINS") &&
+            //     createCosmosPlugin(),
+            // (getSecret(character, "SOLANA_PUBLIC_KEY") ||
+            //     (getSecret(character, "WALLET_PUBLIC_KEY") &&
+            //         !getSecret(character, "WALLET_PUBLIC_KEY")?.startsWith(
+            //             "0x"
+            //         ))) &&
+            // getSecret(character, "SOLANA_ADMIN_PUBLIC_KEY") &&
+            // getSecret(character, "SOLANA_PRIVATE_KEY") &&
+            // getSecret(character, "SOLANA_ADMIN_PRIVATE_KEY")
+            //     ? nftGenerationPlugin
+            //     : null,
+            // getSecret(character, "ZEROG_PRIVATE_KEY") ? zgPlugin : null,
+            // getSecret(character, "COINMARKETCAP_API_KEY")
+            //     ? coinmarketcapPlugin
+            //     : null,
+            // getSecret(character, "COINBASE_COMMERCE_KEY")
+            //     ? coinbaseCommercePlugin
+            //     : null,
+            // getSecret(character, "FAL_API_KEY") ||
+            // getSecret(character, "OPENAI_API_KEY") ||
+            // getSecret(character, "VENICE_API_KEY") ||
+            // getSecret(character, "NINETEEN_AI_API_KEY") ||
+            // getSecret(character, "HEURIST_API_KEY") ||
+            // getSecret(character, "LIVEPEER_GATEWAY_URL")
+            //     ? imageGenerationPlugin
+            //     : null,
+            // getSecret(character, "FAL_API_KEY") ? ThreeDGenerationPlugin : null,
+            // ...(getSecret(character, "COINBASE_API_KEY") &&
+            // getSecret(character, "COINBASE_PRIVATE_KEY")
+            //     ? [
+            //           coinbaseMassPaymentsPlugin,
+            //           tradePlugin,
+            //           tokenContractPlugin,
+            //           advancedTradePlugin,
+            //       ]
+            //     : []),
+            // ...(teeMode !== TEEMode.OFF && walletSecretSalt ? [teePlugin] : []),
+            // getSecret(character, "SGX") ? sgxPlugin : null,
+            // getSecret(character, "ENABLE_TEE_LOG") &&
+            // ((teeMode !== TEEMode.OFF && walletSecretSalt) ||
+            //     getSecret(character, "SGX"))
+            //     ? teeLogPlugin
+            //     : null,
+            // getSecret(character, "COINBASE_API_KEY") &&
+            // getSecret(character, "COINBASE_PRIVATE_KEY") &&
+            // getSecret(character, "COINBASE_NOTIFICATION_URI")
+            //     ? webhookPlugin
+            //     : null,
+            // goatPlugin,
+            // getSecret(character, "COINGECKO_API_KEY") ||
+            // getSecret(character, "COINGECKO_PRO_API_KEY")
+            //     ? coingeckoPlugin
+            //     : null,
+            // getSecret(character, "EVM_PROVIDER_URL") ? goatPlugin : null,
+            // getSecret(character, "ABSTRACT_PRIVATE_KEY")
+            //     ? abstractPlugin
+            //     : null,
+            // getSecret(character, "BINANCE_API_KEY") &&
+            // getSecret(character, "BINANCE_SECRET_KEY")
+            //     ? binancePlugin
+            //     : null,
+            // getSecret(character, "FLOW_ADDRESS") &&
+            // getSecret(character, "FLOW_PRIVATE_KEY")
+            //     ? flowPlugin
+            //     : null,
+            // getSecret(character, "LENS_ADDRESS") &&
+            // getSecret(character, "LENS_PRIVATE_KEY")
+            //     ? lensPlugin
+            //     : null,
+            // getSecret(character, "APTOS_PRIVATE_KEY") ? aptosPlugin : null,
+            // getSecret(character, "MVX_PRIVATE_KEY") ? multiversxPlugin : null,
+            // getSecret(character, "ZKSYNC_PRIVATE_KEY") ? zksyncEraPlugin : null,
+            // getSecret(character, "CRONOSZKEVM_PRIVATE_KEY")
+            //     ? cronosZkEVMPlugin
+            //     : null,
+            // getSecret(character, "TEE_MARLIN") ? teeMarlinPlugin : null,
+            // getSecret(character, "TON_PRIVATE_KEY") ? tonPlugin : null,
+            // getSecret(character, "THIRDWEB_SECRET_KEY") ? thirdwebPlugin : null,
+            // getSecret(character, "SUI_PRIVATE_KEY") ? suiPlugin : null,
+            // getSecret(character, "STORY_PRIVATE_KEY") ? storyPlugin : null,
+            // getSecret(character, "FUEL_PRIVATE_KEY") ? fuelPlugin : null,
+            // getSecret(character, "AVALANCHE_PRIVATE_KEY")
+            //     ? avalanchePlugin
+            //     : null,
+            // getSecret(character, "ECHOCHAMBERS_API_URL") &&
+            // getSecret(character, "ECHOCHAMBERS_API_KEY")
+            //     ? echoChambersPlugin
+            //     : null,
+            // getSecret(character, "LETZAI_API_KEY") ? letzAIPlugin : null,
+            // getSecret(character, "STARGAZE_ENDPOINT") ? stargazePlugin : null,
+            // getSecret(character, "GIPHY_API_KEY") ? giphyPlugin : null,
+            // getSecret(character, "GENLAYER_PRIVATE_KEY")
+            //     ? genLayerPlugin
+            //     : null,
+            // getSecret(character, "AVAIL_SEED") &&
+            // getSecret(character, "AVAIL_APP_ID")
+            //     ? availPlugin
+            //     : null,
+            // getSecret(character, "OPEN_WEATHER_API_KEY")
+            //     ? openWeatherPlugin
+            //     : null,
+            // getSecret(character, "OBSIDIAN_API_TOKEN") ? obsidianPlugin : null,
+            // getSecret(character, "ARTHERA_PRIVATE_KEY")?.startsWith("0x")
+            //     ? artheraPlugin
+            //     : null,
+            // getSecret(character, "ALLORA_API_KEY") ? alloraPlugin : null,
+            // getSecret(character, "HYPERLIQUID_PRIVATE_KEY")
+            //     ? hyperliquidPlugin
+            //     : null,
+            // getSecret(character, "HYPERLIQUID_TESTNET")
+            //     ? hyperliquidPlugin
+            //     : null,
+            // getSecret(character, "AKASH_MNEMONIC") &&
+            // getSecret(character, "AKASH_WALLET_ADDRESS")
+            //     ? akashPlugin
+            //     : null,
+            // getSecret(character, "QUAI_PRIVATE_KEY") ? quaiPlugin : null,
         ].filter(Boolean),
         providers: [],
         actions: [],

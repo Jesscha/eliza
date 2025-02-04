@@ -26,6 +26,8 @@ async function composeTweet(
             template: tweetTemplate,
         });
 
+        // console.log(context);
+
         const tweetContentObject = await generateObject({
             runtime,
             context,

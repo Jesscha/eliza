@@ -1,164 +1,248 @@
-# @elizaos/plugin-bootstrap
+# @elizaos/plugin-twitter
 
-A plugin providing core functionality and basic actions for ElizaOS agents.
+A plugin for Twitter/X integration, providing automated tweet posting capabilities with character-aware content generation.
 
-## Description
+## Overview
 
-The Bootstrap plugin enables fundamental agent behaviors including conversation management, room interactions, and fact tracking. It provides essential actions and evaluators that form the foundation of agent interactions.
+This plugin provides functionality to:
+
+- Compose context-aware tweets
+- Post tweets to Twitter/X platform
+- Handle authentication and session management
+- Support premium Twitter features
+- Manage tweet length restrictions
 
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-bootstrap
+npm install @elizaos/plugin-twitter
+```
+
+## Configuration
+
+The plugin requires the following environment variables:
+
+```env
+TWITTER_USERNAME=your_username
+TWITTER_PASSWORD=your_password
+TWITTER_EMAIL=your_email              # Optional: for 2FA
+TWITTER_2FA_SECRET=your_2fa_secret    # Optional: for 2FA
+TWITTER_PREMIUM=false                 # Optional: enables premium features
+TWITTER_DRY_RUN=false                # Optional: test without posting
+```
+
+## Usage
+
+Import and register the plugin in your Eliza configuration:
+
+```typescript
+import { twitterPlugin } from "@elizaos/plugin-twitter";
+
+export default {
+    plugins: [twitterPlugin],
+    // ... other configuration
+};
 ```
 
 ## Features
 
-### 1. Conversation Management
+### Tweet Composition
 
-- NONE action for basic responses
-- CONTINUE action for follow-ups
-- IGNORE action for appropriate disengagement
-- Built-in conversation flow control
+The plugin uses context-aware templates to generate appropriate tweets:
 
-### 2. Room Control
+```typescript
+import { postAction } from "@elizaos/plugin-twitter";
 
-- Follow/Unfollow room functionality
-- Mute/Unmute capabilities
-- Automatic engagement level tracking
-- Smart participation management
+// Tweet will be composed based on context and character limits
+const result = await postAction.handler(runtime, message, state);
+```
 
-### 3. Fact Management
+### Tweet Posting
 
-- Automatic fact extraction
-- Categorization of claims
-- Deduplication of known information
-- Support for multiple fact types:
-    - Permanent facts
-    - Status updates
-    - Opinions
-    - Biographical information
+```typescript
+// Post with automatic content generation
+await postAction.handler(runtime, message, state);
 
-### 4. Goal Tracking
-
-- Track objective progress
-- Update goal statuses
-- Monitor completion states
-- Automatic progress evaluation
-
-## Providers
-
-### 1. Boredom Provider
-
-- Tracks engagement levels
-- Provides status messages
-- Monitors conversation quality
-- Adjusts participation accordingly
-
-### 2. Facts Provider
-
-- Manages fact database
-- Retrieves relevant information
-- Formats fact summaries
-- Maintains fact context
-
-### 3. Time Provider
-
-- Provides UTC timestamps
-- Human-readable formatting
-- Time-based operation support
+// Dry run mode (for testing)
+process.env.TWITTER_DRY_RUN = "true";
+await postAction.handler(runtime, message, state);
+```
 
 ## Development
 
-1. Clone the repository
-2. Install dependencies:
+### Building
 
 ```bash
-pnpm install
+npm run build
 ```
 
-3. Build the plugin:
+### Testing
 
 ```bash
-pnpm run build
+npm run test
 ```
 
-4. Run linting:
+### Development Mode
 
 ```bash
-pnpm run lint
+npm run dev
 ```
 
 ## Dependencies
 
-- @elizaos/core: workspace:\*
+- `@elizaos/core`: Core Eliza functionality
+- `agent-twitter-client`: Twitter API client
+- `tsup`: Build tool
+- Other standard dependencies listed in package.json
+
+## API Reference
+
+### Core Interfaces
+
+```typescript
+interface TweetContent {
+    text: string;
+}
+
+// Tweet Schema
+const TweetSchema = z.object({
+    text: z.string().describe("The text of the tweet"),
+});
+
+// Action Interface
+interface Action {
+    name: "POST_TWEET";
+    similes: string[];
+    description: string;
+    validate: (
+        runtime: IAgentRuntime,
+        message: Memory,
+        state?: State
+    ) => Promise<boolean>;
+    handler: (
+        runtime: IAgentRuntime,
+        message: Memory,
+        state?: State
+    ) => Promise<boolean>;
+    examples: Array<Array<any>>;
+}
+```
+
+### Plugin Methods
+
+- `postAction.handler`: Main method for posting tweets
+- `postAction.validate`: Validates Twitter credentials
+- `composeTweet`: Internal method for tweet generation
+- `postTweet`: Internal method for tweet posting
+
+## Common Issues/Troubleshooting
+
+### Issue: Authentication Failures
+
+- **Cause**: Invalid credentials or 2FA configuration
+- **Solution**: Verify credentials and 2FA setup
+
+### Issue: Tweet Length Errors
+
+- **Cause**: Content exceeds Twitter's character limit
+- **Solution**: Enable TWITTER_PREMIUM for extended tweets or ensure content is within limits
+
+### Issue: Rate Limiting
+
+- **Cause**: Too many requests in short time
+- **Solution**: Implement proper request throttling
+
+## Security Best Practices
+
+- Store credentials securely using environment variables
+- Use 2FA when possible
+- Implement proper error handling
+- Keep dependencies updated
+- Use dry run mode for testing
+- Monitor Twitter API usage
+
+## Template System
+
+The plugin uses a sophisticated template system for tweet generation:
+
+```typescript
+const tweetTemplate = `
+# Context
+{{recentMessages}}
+
+# Topics
+{{topics}}
+
+# Post Directions
+{{postDirections}}
+
+# Recent interactions
+{{recentPostInteractions}}
+
+# Task
+Generate a tweet that:
+1. Relates to the recent conversation
+2. Matches the character's style
+3. Is concise and engaging
+4. Must be UNDER 180 characters
+5. Speaks from the perspective of {{agentName}}
+`;
+```
 
 ## Future Enhancements
 
-1. **Enhanced Conversation Management**
+1. **Content Generation**
 
-    - Advanced context tracking
-    - Multi-thread conversation support
-    - Conversation state persistence
-    - Improved conversation flow control
-    - Natural language understanding improvements
+    - Advanced context awareness
+    - Multi-language support
+    - Style customization
+    - Hashtag optimization
+    - Media generation
+    - Thread composition
 
-2. **Advanced Room Control**
+2. **Engagement Features**
 
-    - Dynamic room creation and management
-    - Room permission system
-    - Advanced moderation tools
-    - Room analytics and insights
-    - Cross-room communication features
+    - Auto-reply system
+    - Engagement analytics
+    - Follower management
+    - Interaction scheduling
+    - Sentiment analysis
+    - Community management
 
-3. **Expanded Fact Management**
+3. **Tweet Management**
 
-    - Enhanced fact verification system
-    - Fact relationship mapping
-    - Automated fact updating
-    - Fact confidence scoring
-    - Cross-reference system
-    - Fact expiration management
+    - Thread management
+    - Tweet scheduling
+    - Content moderation
+    - Archive management
+    - Delete automation
+    - Edit optimization
 
-4. **Goal System Improvements**
+4. **Analytics Integration**
 
-    - Multi-step goal planning
-    - Goal dependency tracking
-    - Progress visualization
-    - Goal priority management
-    - Automated milestone tracking
-    - Goal optimization suggestions
+    - Performance tracking
+    - Engagement metrics
+    - Audience insights
+    - Trend analysis
+    - ROI measurement
+    - Custom reporting
 
-5. **Provider Enhancements**
+5. **Authentication**
 
-    - Improved boredom detection
-    - Advanced engagement metrics
-    - Enhanced fact retrieval algorithms
-    - Real-time status updates
-    - Provider performance analytics
+    - OAuth improvements
+    - Multi-account support
+    - Session management
+    - Rate limit handling
+    - Security enhancements
+    - Backup mechanisms
 
-6. **Memory Management**
-
-    - Enhanced memory prioritization
-    - Memory compression techniques
-    - Long-term memory storage
-    - Memory relationship mapping
-    - Context-aware recall
-
-7. **Developer Tools**
-
-    - Enhanced debugging capabilities
-    - Testing framework improvements
-    - Plugin development templates
+6. **Developer Tools**
+    - Enhanced debugging
+    - Testing framework
     - Documentation generator
-    - Performance profiling tools
-
-8. **Integration Features**
-    - Enhanced plugin interoperability
-    - External service connectors
-    - API gateway integration
-    - Webhook system improvements
-    - Third-party platform support
+    - Integration templates
+    - Error handling
+    - Logging system
 
 We welcome community feedback and contributions to help prioritize these enhancements.
 
@@ -168,10 +252,23 @@ Contributions are welcome! Please see the [CONTRIBUTING.md](CONTRIBUTING.md) fil
 
 ## Credits
 
+This plugin integrates with and builds upon several key technologies:
+
+- [Twitter/X API](https://developer.twitter.com/en/docs): Official Twitter platform API
+- [agent-twitter-client](https://www.npmjs.com/package/agent-twitter-client): Twitter API client library
+- [Zod](https://github.com/colinhacks/zod): TypeScript-first schema validation
+
 Special thanks to:
 
-- The Eliza Core development team
+- The Twitter/X Developer Platform team
+- The agent-twitter-client maintainers for API integration tools
 - The Eliza community for their contributions and feedback
+
+For more information about Twitter/X integration capabilities:
+
+- [Twitter API Documentation](https://developer.twitter.com/en/docs)
+- [Twitter Developer Portal](https://developer.twitter.com/en/portal/dashboard)
+- [Twitter API Best Practices](https://developer.twitter.com/en/docs/twitter-api/rate-limits)
 
 ## License
 

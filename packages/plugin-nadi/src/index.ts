@@ -1,15 +1,12 @@
 import { Plugin } from "@elizaos/core";
-import { nadiProvider } from "./providers/nadi";
-
-export * as actions from "./actions";
-export * as evaluators from "./evaluators";
-export * as providers from "./providers";
+import { reviewAction } from "./actions/review";
 
 export const nadiPlugin: Plugin = {
     name: "nadi",
-    description: "Nadi plugin",
-    actions: [],
+    description: "Nadi specific features",
+    actions: [reviewAction],
     evaluators: [],
-    providers: [nadiProvider],
+    providers: [],
 };
+
 export default nadiPlugin;

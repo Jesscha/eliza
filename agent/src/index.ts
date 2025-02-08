@@ -93,7 +93,6 @@ import { zksyncEraPlugin } from "@elizaos/plugin-zksync-era";
 import { OpacityAdapter } from "@elizaos/plugin-opacity";
 import { openWeatherPlugin } from "@elizaos/plugin-open-weather";
 import { stargazePlugin } from "@elizaos/plugin-stargaze";
-import { akashPlugin } from "@elizaos/plugin-akash";
 import { quaiPlugin } from "@elizaos/plugin-quai";
 import { nadiPlugin } from "@elizaos/plugin-nadi";
 import Database from "better-sqlite3";

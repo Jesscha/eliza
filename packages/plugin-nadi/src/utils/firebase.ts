@@ -3,7 +3,5 @@ export const extractSentences = (documentData) => {
         return [];
     }
 
-    return documentData.documents
-        .filter((doc) => doc.fields?.content?.stringValue)
-        .map((doc) => doc.fields.content.stringValue);
+    return documentData.documents.map((doc) => doc.fields);
 };

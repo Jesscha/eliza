@@ -733,8 +733,8 @@ export async function createAgent(
         character,
         // character.plugins are handled when clients are added
         plugins: [
-            bootstrapPlugin,
-            twitterPlugin,
+            // bootstrapPlugin,
+            // twitterPlugin,
             nadiPlugin,
             // getSecret(character, "CONFLUX_CORE_PRIVATE_KEY")
             //     ? confluxPlugin

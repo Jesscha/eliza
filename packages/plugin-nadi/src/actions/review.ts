@@ -10,7 +10,7 @@ import {
     truncateToCompleteSentence,
 } from "@elizaos/core";
 import { Scraper } from "agent-twitter-client";
-import { reviewTemplate2, tweetTemplate } from "../templates";
+import { reviewTemplate, tweetTemplate } from "../templates";
 import { isTweetContent, ReviewSchema, TweetSchema } from "../types";
 
 export const DEFAULT_MAX_TWEET_LENGTH = 280;
@@ -22,11 +22,17 @@ async function fetchCandidateSentences() {
             method: "GET",
         }
     ).then((res) => res.json())) as {
-        documents: {
+        documents?: {
             name: string; // Contains the full path including document ID
             fields: any;
         }[];
     };
+
+    if (!nadiRes.documents) {
+        elizaLogger.error("No candidate sentences found");
+        return false;
+    }
+
     return JSON.stringify(
         nadiRes.documents.map((doc) => ({
             document: doc.name.split("/").pop(), // Extract the ID from the full path
@@ -107,6 +113,32 @@ async function sendTweet(twitterClient: Scraper, content: string) {
     return true;
 }
 
+async function getFirebaseAuthToken(runtime: IAgentRuntime) {
+    const API_KEY = runtime.getSetting("FIREBASE_API_KEY");
+    const email = runtime.getSetting("FIREBASE_AUTH_EMAIL");
+    const password = runtime.getSetting("FIREBASE_AUTH_PASSWORD");
+
+    elizaLogger.log("API_KEY:", API_KEY);
+    elizaLogger.log("email:", email);
+    elizaLogger.log("password:", password);
+    const response = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`,
+        {
+            method: "POST",
+            body: JSON.stringify({
+                email,
+                password,
+                returnSecureToken: true,
+            }),
+        }
+    );
+
+    const data = await response.json();
+
+    elizaLogger.log("data:", data);
+    return data.idToken;
+}
+
 async function postTweet(
     runtime: IAgentRuntime,
     content: string
@@ -167,15 +199,23 @@ async function postTweet(
         return false;
     }
 }
+
 export const reviewAction: Action = {
-    name: "REVIEW2",
-    similes: ["REVIEW", "CHECK", "EXAMINE"],
-    description: "Review and analyze content from Nadi",
+    name: "NADI_REVIEW",
+    similes: ["NADI_REVIEW", "REVIEW_NADI", "CHECK_NADI", "EXAMINE_NADI"],
+    description: "Review and analyze content specifically from Nadi platform",
     validate: async (
         runtime: IAgentRuntime,
         message: Memory,
         state?: State
     ) => {
+        const username = runtime.getSetting("TWITTER_USERNAME");
+        const password = runtime.getSetting("TWITTER_PASSWORD");
+
+        if (!username || !password) {
+            elizaLogger.error("Twitter credentials not configured");
+            return false;
+        }
         return true;
     },
     handler: async (
@@ -184,33 +224,46 @@ export const reviewAction: Action = {
         state?: State
     ): Promise<boolean> => {
         try {
-            setInterval(async () => {
+            const reviewNadiContent = async () => {
                 const candidates = await fetchCandidateSentences();
+                if (!candidates) {
+                    elizaLogger.error("No candidate sentences found");
+                    return;
+                }
                 const context = composeContext({
                     state: {
                         ...state,
                         candidates,
                     },
-                    template: reviewTemplate2,
+                    template: reviewTemplate,
                 });
-
-                console.log(candidates);
-                console.log(context);
-
                 const reviewObject = (await generateObject({
                     runtime,
                     context,
                     modelClass: ModelClass.SMALL,
                     schema: ReviewSchema,
-                })) as any;
-                console.log(reviewObject.object);
-
+                })) as {
+                    object: {
+                        approved: boolean;
+                        content: string;
+                        authorId: string;
+                        reason: string;
+                        document: string;
+                    };
+                };
                 try {
                     if (reviewObject.object.approved) {
+                        const authToken = await getFirebaseAuthToken(runtime);
+                        elizaLogger.log("Auth token:", authToken);
+
                         const response = await fetch(
-                            "https://firestore.googleapis.com/v1/projects/nadi-c7a96/databases/(default)/documents/reviews",
+                            "https://firestore.googleapis.com/v1/projects/nadi-c7a96/databases/(default)/documents/sentences",
                             {
                                 method: "POST",
+                                headers: {
+                                    Authorization: `Bearer ${authToken}`,
+                                    "Content-Type": "application/json",
+                                },
                                 body: JSON.stringify({
                                     fields: {
                                         content: {
@@ -235,9 +288,12 @@ export const reviewAction: Action = {
                         );
 
                         if (!response.ok) {
+                            const errorData = await response.text();
                             elizaLogger.error(
-                                "Failed to save review:",
-                                await response.json()
+                                `Failed to create document: ${errorData}`
+                            );
+                            throw new Error(
+                                `Failed to create document: ${response.status}`
                             );
                         }
                         // post tweet about what is approved and why
@@ -252,50 +308,38 @@ export const reviewAction: Action = {
                             }
                         );
 
-                        console.log(tweetContent);
+                        await postTweet(runtime, tweetContent);
+                        const deleteResponse = await fetch(
+                            `https://firestore.googleapis.com/v1/projects/nadi-c7a96/databases/(default)/documents/sentences_candidates/${reviewObject.object.document}`,
+                            {
+                                method: "DELETE",
+                            }
+                        );
+
+                        if (!deleteResponse.ok) {
+                            elizaLogger.error(
+                                "Failed to delete review:",
+                                await deleteResponse.json()
+                            );
+                        }
                     } else {
-                        // post tweet about what is not approved and why
+                        elizaLogger.log(
+                            "Review not approved:",
+                            reviewObject.object
+                        );
                     }
-                    // const deleteResponse = await fetch(
-                    //     `https://firestore.googleapis.com/v1/projects/nadi-c7a96/databases/(default)/documents/sentences_candidates/${reviewObject.object.document}`,
-                    //     {
-                    //         method: "DELETE",
-                    //     }
-                    // );
-
-                    // console.log(
-                    //     deleteResponse,
-                    //     "deleteResponse : ",
-                    //     reviewObject.object.document
-                    // );
-
-                    // if (!deleteResponse.ok) {
-                    //     elizaLogger.error(
-                    //         "Failed to delete review:",
-                    //         await deleteResponse.json()
-                    //     );
-                    // }
                 } catch (error) {
                     elizaLogger.error(
                         "Error saving review to Firestore:",
                         error
                     );
                 }
-            }, 5000);
-            // const nadiRes = await fetch(
-            //     "https://firestore.googleapis.com/v1/projects/nadi-c7a96/databases/(default)/documents/sentences",
-            //     {
-            //         method: "GET",
-            //     }
-            // );
-            // const nadiSentences = extractSentences(await nadiRes.json());
+            };
 
-            // if (nadiSentences.length === 0) {
-            //     elizaLogger.log("No new Nadi content to review");
-            //     return false;
-            // }
+            await reviewNadiContent();
 
-            // elizaLogger.log("Found Nadi content to review:", nadiSentences);
+            setInterval(reviewNadiContent, 60 * 60 * 1000);
+
             return true;
         } catch (error) {
             elizaLogger.error("Error reviewing Nadi content:", error);
@@ -306,13 +350,26 @@ export const reviewAction: Action = {
         [
             {
                 user: "{{user1}}",
+                content: { text: "/nadi_review" },
+            },
+            {
+                user: "{{agentName}}",
+                content: {
+                    text: "Reviewing latest content from Nadi community",
+                    action: "NADI_REVIEW",
+                },
+            },
+        ],
+        [
+            {
+                user: "{{user1}}",
                 content: { text: "Review Nadi content" },
             },
             {
                 user: "{{agentName}}",
                 content: {
                     text: "Reviewing latest content from Nadi community",
-                    action: "REVIEW",
+                    action: "NADI_REVIEW",
                 },
             },
         ],

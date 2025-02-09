@@ -5,33 +5,24 @@ export const tweetTemplate = `
 # Topics
 {{topics}}
 
-# Post Directions
-{{postDirections}}
-
-# Recent interactions between {{agentName}} and other users:
-{{recentPostInteractions}}
-
-# Providers
-{{providers}}
-
 # Chosen Sentence and reason
 {{sentence}}
 {{reason}}
 
 # Task
-Generate a tweet that:
-1. Relates to the recent conversation or requested topic
-2. Matches the character's style and voice
-3. Is concise and engaging
-4. Must be UNDER 180 characters (this is a strict requirement)
-5. Speaks from the perspective of {{agentName}}
-6. Must include exact chosen sentence and why it is chosen
-7. specify that this sentence is chosen what people shared on NADI
-8. specify that this sentence is now available on NADI.
+Create a tweet with these requirements:
+1. Use natural, conversational language matching {{agentName}}'s personality
+2. Maximum length: 180 characters (strict limit)
+3. Write in first person as {{agentName}}
+4. Include verbatim: "{{sentence}}" and explain selection rationale
+5. Mention this was shared by NADI community
+6. Note this content passed NADI approval process
+
+Format: Plain tweet text only, no metadata or markup
 
 Generate only the tweet text, no other commentary.`;
 
-export const reviewTemplate2 = `
+export const reviewTemplate = `
 # Context
 {{recentMessages}}
 
@@ -45,12 +36,24 @@ export const reviewTemplate2 = `
 {{recentPostInteractions}}
 
 # Task
-Pick one candidate sentence that:
-1. beneficial to share
-2. inspirational
-3. not insulting, not violent
-4. with the reason why it is picked
-5. if there is not worthy to share, approved is false
+Review the sentences and:
+
+1. FIRST: Look for positive, beneficial sentences that meet ALL these criteria:
+   - Inspirational or motivational
+   - Helpful or beneficial to share with others
+   - Completely free of insults, violence, or negative content
+   - Appropriate for general audiences
+
+2. If you find a sentence meeting ALL criteria above:
+   - Set approved to true
+   - Select that sentence
+   - Explain why it's a good choice
+
+3. Only if NO sentences meet ALL the positive criteria:
+   - Set approved to false
+   - Explain why none of the sentences were suitable
+
+Remember: Always prioritize finding a good sentence first before deciding nothing is suitable.
 
 Response must be in this JSON format:
 {
